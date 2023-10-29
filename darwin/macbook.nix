@@ -10,7 +10,19 @@
 #
 
 { config, pkgs, vars, ... }:
-
+let
+  pythonPkgs = pkgs.python3Packages;
+  fortlsFromSrc = import ./fortls.nix {
+    inherit (pkgs) lib fetchFromGitHub; 
+    inherit (pythonPkgs) buildPythonApplication setuptools-scm json5 packaging;
+  };
+  findentFromSrc = import ./findent.nix {
+    inherit (pkgs) lib fetchFromGitHub stdenv;
+  };
+  asciidoctorFromSrc = import ./asciidoctor/asciidoctor.nix {
+    inherit (pkgs) lib bundlerApp bundlerUpdateScript jre;
+  };
+in
 {
   imports = ( import ./modules );
 
@@ -45,6 +57,7 @@
     variables = {                         # Environment Variables
       EDITOR = "${vars.editor}";
       VISUAL = "${vars.editor}";
+      JAVA_HOME = "${pkgs.openjdk.home}";
     };
     systemPackages = with pkgs; [         # System-Wide Packages
       # Terminal
@@ -52,11 +65,16 @@
       git
       pfetch
       ranger
-
+      
+      openjdk
       # Doom Emacs
       emacs
       fd
       ripgrep
+      #fortls 尝试在本地构建
+      fortlsFromSrc
+      findentFromSrc
+      asciidoctorFromSrc
     ];
   };
 
@@ -171,6 +189,8 @@
 
           lightline-vim                   # Info bar at bottom
           indent-blankline-nvim           # Indentation lines
+
+          nvim-lspconfig
         ];
 
         extraConfig = ''
@@ -187,6 +207,14 @@
           set number                                " Set numbers
 
           nmap <F6> :NERDTreeToggle<CR>             " F6 opens NERDTree
+          
+          " Language server configurations
+          lua << EOF
+          require'lspconfig'.fortls.setup{
+            cmd = { "${pkgs.fortls}/bin/fortls" },  " Set the specific path of fortls"
+          }
+          EOF
+
         '';
       };
     };
