@@ -22,6 +22,10 @@ let
   asciidoctorFromSrc = import ./asciidoctor/asciidoctor.nix {
     inherit (pkgs) lib bundlerApp bundlerUpdateScript jre;
   };
+  asciidoxyFromSrc = import ./asciidoxy.nix {
+    inherit (pkgs) lib fetchPypi;
+    inherit (pythonPkgs) buildPythonApplication json5 tqdm mako toml aiohttp pyparsing six;
+  };
 in
 {
   imports = ( import ./modules );
@@ -61,6 +65,8 @@ in
     };
     systemPackages = with pkgs; [         # System-Wide Packages
       # Terminal
+      wget
+      gettext
       ansible
       git
       pfetch
@@ -75,6 +81,11 @@ in
       fortlsFromSrc
       findentFromSrc
       asciidoctorFromSrc
+      asciidoxyFromSrc 
+       
+      # add wjq
+      doxygen
+      poetry
     ];
   };
 
@@ -174,7 +185,7 @@ in
           # Syntax
           vim-nix
           vim-markdown
-
+          vim-markdown-composer
           # Quality of life
           vim-lastplace                   # Opens document where you left it
           auto-pairs                      # Print double quotes/brackets/etc.
@@ -191,12 +202,13 @@ in
           indent-blankline-nvim           # Indentation lines
 
           nvim-lspconfig
+          nvim-dap
+          nvim-dap-ui
         ];
 
         extraConfig = ''
           syntax enable                             " Syntax highlighting
           colorscheme srcery                        " Color scheme text
-
           let g:lightline = {
             \ 'colorscheme': 'wombat',
             \ }                                     " Color scheme lightline
@@ -207,12 +219,61 @@ in
           set number                                " Set numbers
 
           nmap <F6> :NERDTreeToggle<CR>             " F6 opens NERDTree
-          
+
           " Language server configurations
           lua << EOF
           require'lspconfig'.fortls.setup{
             cmd = { "${pkgs.fortls}/bin/fortls" },  " Set the specific path of fortls"
           }
+
+          local dap = require('dap')
+          dap.adapters.python = {
+            type = 'executable';
+            command = 'python';
+          args = { '-m', 'debugpy.adapter' };
+          }
+
+          dap.configurations.python = {
+          {
+          type = 'python';
+          request = 'launch';
+          name = "Launch file";
+          program = function()
+            return vim.fn.expand("%:p")  
+          end;
+          stopOnEntry = true;  -- 添加这一行
+          console = 'integratedTerminal'; 
+          pythonPath = function()
+            local handle = io.popen("poetry env info -p")  
+            local result = handle:read("*a")
+            handle:close()
+            return result:gsub("%s+", "") .. "/bin/python"  
+          end,
+          },
+          {
+          type = 'python';
+          request = 'launch';
+          name = "config";
+          program = "codegpt";  -- The entry point of your program
+          args = {"config"}; -- The arguments your program needs 
+          -- stopOnEntry = true;  -- 添加这一行
+          pythonPath = function()
+            local handle = io.popen("poetry env info -p")  -- Execute poetry command
+            local result = handle:read("*a")
+            handle:close()
+            return result:gsub("%s+", "") .. "/bin/python"  -- Append "/bin/python" to the path
+          end,
+          },
+          }
+
+
+          local dapui=require("dapui")
+          dapui.setup()
+          dap.listeners.after.event_initialized["dapui_config"] = function() dapui.open() end
+          dap.listeners.before.event_terminated["dapui_config"] = function() dapui.close() end
+          dap.listeners.before.event_exited["dapui_config"] = function() dapui.close() end
+
+
           EOF
 
         '';
